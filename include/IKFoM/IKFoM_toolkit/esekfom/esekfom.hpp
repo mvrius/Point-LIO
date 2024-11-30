@@ -164,9 +164,9 @@ public:
 				for(int i = 0; i < 3; i++){
 					seg_SO3(i) = -1 * f_(dim + i) * dt;
 				}
-				MTK::SO3<scalar_type> res;
-				res.w() = MTK::exp<scalar_type, 3>(res.vec(), seg_SO3, scalar_type(1/2));
-				F_x1.template block<3, 3>(idx, idx) = res.normalized().toRotationMatrix();		
+				// MTK::SO3<scalar_type> res;
+				// res.w() = MTK::exp<scalar_type, 3>(res.vec(), seg_SO3, scalar_type(1/2));
+				F_x1.template block<3, 3>(idx, idx) = MTK::SO3<scalar_type>::exp(seg_SO3); // res.normalized().toRotationMatrix();		
 				res_temp_SO3 = MTK::A_matrix(seg_SO3);
 				for(int i = 0; i < n; i++){
 					f_x_final. template block<3, 1>(idx, i) = res_temp_SO3 * (f_x_. template block<3, 1>(dim, i));	
@@ -207,7 +207,7 @@ public:
 			Matrix<scalar_type, n, Eigen::Dynamic> PHT;
 			Matrix<scalar_type, Eigen::Dynamic, Eigen::Dynamic> HPHT;
 			Matrix<scalar_type, n, Eigen::Dynamic> K_;
-			// if(n > dof_Measurement)
+			if(n > dof_Measurement)
 			{
 				PHT = P_. template block<n, 12>(0, 0) * h_x.transpose();
 				HPHT = h_x * PHT.topRows(12);
@@ -216,6 +216,14 @@ public:
 					HPHT(m, m) += m_noise;
 				}
 				K_= PHT*HPHT.inverse();
+			}
+			else
+			{
+				Matrix<scalar_type, 12, 12> HTH = m_noise * h_x.transpose() * h_x;
+				Matrix<scalar_type, n, n> P_inv = P_.inverse();
+				P_inv.template block<12, 12>(0, 0) += HTH;
+				P_inv = P_inv.inverse();
+				K_ = P_inv.template block<n, 12>(0, 0) * h_x.transpose() * m_noise;
 			}
 			Matrix<scalar_type, n, 1> dx_ = K_ * z; // - h) + (K_x - Matrix<scalar_type, n, n>::Identity()) * dx_new; 
 			// state x_before = x_;

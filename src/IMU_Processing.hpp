@@ -33,7 +33,14 @@ public:
 
     ImuProcess();
 
-    ~ImuProcess();
+  // ofstream fout_imu;
+  // double first_lidar_time;
+  int    lidar_type;
+  bool   imu_en;
+  V3D mean_acc, gravity_;
+  bool   imu_need_init_ = true;
+  bool   b_first_frame_ = true;
+  bool   gravity_align_ = false;
 
     void Reset();
 
@@ -61,22 +68,23 @@ private:
 };
 
 ImuProcess::ImuProcess()
-        : b_first_frame_(true), imu_need_init_(true), gravity_align_(false),
-          logger(rclcpp::get_logger("laserMapping")) {
-    imu_en = true;
-    init_iter_num = 1;
-    mean_acc = V3D(0, 0, -1.0);
-    mean_gyr = V3D(0, 0, 0);
+    : b_first_frame_(true), imu_need_init_(true), gravity_align_(false)
+{
+  imu_en = true;
+  init_iter_num = 1;
+  mean_acc      = V3D(0, 0, 0.0);
+  mean_gyr      = V3D(0, 0, 0);
 }
 
 ImuProcess::~ImuProcess() {}
 
-void ImuProcess::Reset() {
-    RCLCPP_WARN(logger, "Reset ImuProcess");
-    mean_acc = V3D(0, 0, -1.0);
-    mean_gyr = V3D(0, 0, 0);
-    imu_need_init_ = true;
-    init_iter_num = 1;
+void ImuProcess::Reset() 
+{
+  ROS_WARN("Reset ImuProcess");
+  mean_acc      = V3D(0, 0, 0.0);
+  mean_gyr      = V3D(0, 0, 0);
+  imu_need_init_    = true;
+  init_iter_num     = 1;
 }
 
 void ImuProcess::IMU_init(const MeasureGroup &meas, int &N) {
@@ -138,6 +146,24 @@ void ImuProcess::Process(const MeasureGroup &meas, const PointCloudXYZI::Ptr &cu
         *cur_pcl_un_ = *(meas.lidar);
         return;
     }
+    // if (!gravity_align_) gravity_align_ = true;
+    *cur_pcl_un_ = *(meas.lidar);
+    return;
+  }
+  else
+  {
+    // if (!b_first_frame_) 
+    // {if (!gravity_align_) gravity_align_ = true;}
+    // else
+    // {b_first_frame_ = false;
+    // }
+    if (imu_need_init_)
+    {
+      imu_need_init_ = false;
+    }
+    *cur_pcl_un_ = *(meas.lidar);
+    return;
+  }
 }
 
 void ImuProcess::Set_init(Eigen::Vector3d &tmp_gravity, Eigen::Matrix3d &rot) {

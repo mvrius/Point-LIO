@@ -119,11 +119,15 @@ inline void dump_lio_state_to_log(FILE *fp) {
 void pointBodyLidarToIMU(PointType const *const pi, PointType *const po) {
     V3D p_body_lidar(pi->x, pi->y, pi->z);
     V3D p_body_imu;
-    if (extrinsic_est_en) {
-        if (!use_imu_as_input) {
-            p_body_imu = kf_output.x_.offset_R_L_I.normalized() * p_body_lidar + kf_output.x_.offset_T_L_I;
-        } else {
-            p_body_imu = kf_input.x_.offset_R_L_I.normalized() * p_body_lidar + kf_input.x_.offset_T_L_I;
+    if (extrinsic_est_en)
+    {
+        if (!use_imu_as_input)
+        {
+            p_body_imu = kf_output.x_.offset_R_L_I * p_body_lidar + kf_output.x_.offset_T_L_I;
+        }
+        else
+        {
+            p_body_imu = kf_input.x_.offset_R_L_I * p_body_lidar + kf_input.x_.offset_T_L_I;
         }
     } else {
         p_body_imu = Lidar_R_wrt_IMU * p_body_lidar + Lidar_T_wrt_IMU;
@@ -150,10 +154,13 @@ void lasermap_fov_segment() {
     cub_needrm.shrink_to_fit();
 
     V3D pos_LiD;
-    if (use_imu_as_input) {
-        pos_LiD = kf_input.x_.pos + kf_input.x_.rot.normalized() * Lidar_T_wrt_IMU;
-    } else {
-        pos_LiD = kf_output.x_.pos + kf_output.x_.rot.normalized() * Lidar_T_wrt_IMU;
+    if (use_imu_as_input)
+    {
+        pos_LiD = kf_input.x_.pos + kf_input.x_.rot * Lidar_T_wrt_IMU;
+    }
+    else
+    {
+        pos_LiD = kf_output.x_.pos + kf_output.x_.rot * Lidar_T_wrt_IMU;
     }
     if (!Localmap_Initialized) {
         for (int i = 0; i < 3; i++) {
@@ -453,40 +460,39 @@ void map_incremental() {
     PointVector PointNoNeedDownsample;
     PointToAdd.reserve(feats_down_size);
     PointNoNeedDownsample.reserve(feats_down_size);
-
-    for (int i = 0; i < feats_down_size; i++) {
-        if (!Nearest_Points[i].empty()) {
+    
+        for(int i = 0; i < feats_down_size; i++)
+        {            
+            if (!Nearest_Points[i].empty())
+        {
             const PointVector &points_near = Nearest_Points[i];
             bool need_add = true;
-            PointType downsample_result, mid_point;
-            mid_point.x = floor(feats_down_world->points[i].x / filter_size_map_min) * filter_size_map_min +
-                          0.5 * filter_size_map_min;
-            mid_point.y = floor(feats_down_world->points[i].y / filter_size_map_min) * filter_size_map_min +
-                          0.5 * filter_size_map_min;
-            mid_point.z = floor(feats_down_world->points[i].z / filter_size_map_min) * filter_size_map_min +
-                          0.5 * filter_size_map_min;
-            /* If the nearest points is definitely outside the downsample box */
-            if (fabs(points_near[0].x - mid_point.x) > 1.732 * filter_size_map_min ||
-                fabs(points_near[0].y - mid_point.y) > 1.732 * filter_size_map_min ||
-                fabs(points_near[0].z - mid_point.z) > 1.732 * filter_size_map_min) {
-                PointNoNeedDownsample.emplace_back(feats_down_world->points[i]);
+            PointType downsample_result, mid_point; 
+            mid_point.x = floor(feats_down_world->points[i].x/filter_size_map_min)*filter_size_map_min + 0.5 * filter_size_map_min;
+            mid_point.y = floor(feats_down_world->points[i].y/filter_size_map_min)*filter_size_map_min + 0.5 * filter_size_map_min;
+            mid_point.z = floor(feats_down_world->points[i].z/filter_size_map_min)*filter_size_map_min + 0.5 * filter_size_map_min;
+                /* If the nearest points is definitely outside the downsample box */
+                if (fabs(points_near[0].x - mid_point.x) > 0.866 * filter_size_map_min || fabs(points_near[0].y - mid_point.y) > 0.866 * filter_size_map_min || fabs(points_near[0].z - mid_point.z) > 0.866 * filter_size_map_min){
+                    PointNoNeedDownsample.emplace_back(feats_down_world->points[i]);
                 continue;
             }
-            /* Check if there is a point already in the downsample box */
-            float dist = calc_dist<float>(feats_down_world->points[i], mid_point);
-            for (int readd_i = 0; readd_i < points_near.size(); readd_i++) {
-                /* Those points which are outside the downsample box should not be considered. */
-                if (fabs(points_near[readd_i].x - mid_point.x) < 0.5 * filter_size_map_min &&
-                    fabs(points_near[readd_i].y - mid_point.y) < 0.5 * filter_size_map_min &&
-                    fabs(points_near[readd_i].z - mid_point.z) < 0.5 * filter_size_map_min) {
+                /* Check if there is a point already in the downsample box */
+                float dist  = calc_dist<float>(feats_down_world->points[i],mid_point);
+                for (int readd_i = 0; readd_i < points_near.size(); readd_i ++)
+            {
+                    /* Those points which are outside the downsample box should not be considered. */
+                    if (fabs(points_near[readd_i].x - mid_point.x) < 0.5 * filter_size_map_min && fabs(points_near[readd_i].y - mid_point.y) < 0.5 * filter_size_map_min && fabs(points_near[readd_i].z - mid_point.z) < 0.5 * filter_size_map_min) {
                     need_add = false;
                     break;
                 }
             }
-            if (need_add) PointToAdd.emplace_back(feats_down_world->points[i]);
-        } else {
-            // PointToAdd.emplace_back(feats_down_world->points[i]);
-            PointNoNeedDownsample.emplace_back(feats_down_world->points[i]);
+                if (need_add) PointToAdd.emplace_back(feats_down_world->points[i]);
+        }
+        else
+        {
+                // PointToAdd.emplace_back(feats_down_world->points[i]);
+                PointNoNeedDownsample.emplace_back(feats_down_world->points[i]);
+        }
         }
     }
     int add_point_size = ikdtree.Add_Points(PointToAdd, true);
@@ -590,47 +596,51 @@ void set_posestamp(T &out) {
         out.position.x = kf_output.x_.pos(0);
         out.position.y = kf_output.x_.pos(1);
         out.position.z = kf_output.x_.pos(2);
-        out.orientation.x = kf_output.x_.rot.coeffs()[0];
-        out.orientation.y = kf_output.x_.rot.coeffs()[1];
-        out.orientation.z = kf_output.x_.rot.coeffs()[2];
-        out.orientation.w = kf_output.x_.rot.coeffs()[3];
-    } else {
+        Eigen::Quaterniond q(kf_output.x_.rot);
+        out.orientation.x = q.coeffs()[0];
+        out.orientation.y = q.coeffs()[1];
+        out.orientation.z = q.coeffs()[2];
+        out.orientation.w = q.coeffs()[3];
+    }
+    else
+    {
         out.position.x = kf_input.x_.pos(0);
         out.position.y = kf_input.x_.pos(1);
         out.position.z = kf_input.x_.pos(2);
-        out.orientation.x = kf_input.x_.rot.coeffs()[0];
-        out.orientation.y = kf_input.x_.rot.coeffs()[1];
-        out.orientation.z = kf_input.x_.rot.coeffs()[2];
-        out.orientation.w = kf_input.x_.rot.coeffs()[3];
+        Eigen::Quaterniond q(kf_input.x_.rot);
+        out.orientation.x = q.coeffs()[0];
+        out.orientation.y = q.coeffs()[1];
+        out.orientation.z = q.coeffs()[2];
+        out.orientation.w = q.coeffs()[3];
     }
 }
 
 void publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr &pubOdomAftMapped,
                       std::shared_ptr<tf2_ros::TransformBroadcaster> &tf_br) {
     odomAftMapped.header.frame_id = "camera_init";
-    odomAftMapped.child_frame_id = "aft_mapped";
-    if (publish_odometry_without_downsample) {
-        odomAftMapped.header.stamp = get_ros_time(time_current);
-    } else {
-        odomAftMapped.header.stamp = get_ros_time(lidar_end_time);
+    odomAftMapped.child_frame_id = "body"; //
+    if (publish_odometry_without_downsample)
+    {
+        odomAftMapped.header.stamp = ros::Time().fromSec(time_current);
+    }
+    else
+    {
+        odomAftMapped.header.stamp = ros::Time().fromSec(lidar_end_time);
     }
     set_posestamp(odomAftMapped.pose.pose);
 
-    pubOdomAftMapped->publish(odomAftMapped);
-
-    //static tf2_ros::TransformBroadcaster br = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
-    geometry_msgs::msg::TransformStamped transform;
-    transform.header.frame_id = "camera_init";
-    transform.child_frame_id = "aft_mapped";
-    transform.transform.translation.x = odomAftMapped.pose.pose.position.x;
-    transform.transform.translation.y = odomAftMapped.pose.pose.position.y;
-    transform.transform.translation.z = odomAftMapped.pose.pose.position.z;
-    transform.transform.rotation.w = odomAftMapped.pose.pose.orientation.w;
-    transform.transform.rotation.x = odomAftMapped.pose.pose.orientation.x;
-    transform.transform.rotation.y = odomAftMapped.pose.pose.orientation.y;
-    transform.transform.rotation.z = odomAftMapped.pose.pose.orientation.z;
-    transform.header.stamp = odomAftMapped.header.stamp;
-    tf_br->sendTransform(transform);
+    static tf::TransformBroadcaster br;
+    tf::Transform                   transform;
+    tf::Quaternion                  q;
+    transform.setOrigin(tf::Vector3(odomAftMapped.pose.pose.position.x, \
+                                    odomAftMapped.pose.pose.position.y, \
+                                    odomAftMapped.pose.pose.position.z));
+    q.setW(odomAftMapped.pose.pose.orientation.w);
+    q.setX(odomAftMapped.pose.pose.orientation.x);
+    q.setY(odomAftMapped.pose.pose.orientation.y);
+    q.setZ(odomAftMapped.pose.pose.orientation.z);
+    transform.setRotation( q );
+    br.sendTransform( tf::StampedTransform( transform, odomAftMapped.header.stamp, "camera_init", "body" ) );
 }
 
 void publish_path(const rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr &pubPath) {
@@ -724,17 +734,16 @@ int main(int argc, char **argv) {
             ("/cloud_registered", 100000);
     auto pubLaserCloudFullRes_body = nh->create_publisher<sensor_msgs::msg::PointCloud2>
             ("/cloud_registered_body", 100000);
-    auto pubLaserCloudEffect = nh->create_publisher<sensor_msgs::msg::PointCloud2>
-            ("/cloud_effected", 100000);
-    auto pubLaserCloudMap = nh->create_publisher<sensor_msgs::msg::PointCloud2>
+    // ros::Publisher pubLaserCloudEffect  = nh.advertise<sensor_msgs::PointCloud2>
+            // ("/cloud_effected", 100000);
+    ros::Publisher pubLaserCloudMap = nh.advertise<sensor_msgs::PointCloud2>
             ("/Laser_map", 100000);
     auto pubOdomAftMapped = nh->create_publisher<nav_msgs::msg::Odometry>
             ("/aft_mapped_to_init", 100000);
     auto pubPath = nh->create_publisher<nav_msgs::msg::Path>
             ("/path", 100000);
-    //auto plane_pub = nh->create_publisher<visualization_msgs::msg::Marker>
-    //        ("/planner_normal", 1000);
-    auto tf_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>(nh);
+    // ros::Publisher plane_pub = nh.advertise<visualization_msgs::Marker>
+            // ("/planner_normal", 1000);
 //------------------------------------------------------------------------------------------------------
     signal(SIGINT, SigHandle);
     rclcpp::Rate rate(5000);
@@ -767,7 +776,9 @@ int main(int argc, char **argv) {
 
             p_imu->Process(Measures, feats_undistort);
 
-            if (feats_undistort->empty() || feats_undistort == nullptr) {
+            // if (feats_undistort->empty() || feats_undistort == NULL)
+            if (p_imu->imu_need_init_)
+            {
                 continue;
             }
             if (imu_en) {
@@ -792,21 +803,41 @@ int main(int argc, char **argv) {
                         Eigen::Matrix3d rot_init;
                         p_imu->gravity_ << VEC_FROM_ARRAY(gravity);
                         p_imu->Set_init(state_in.gravity, rot_init);
-                        state_in.gravity = state_out.gravity = p_imu->gravity_;
-                        state_in.rot = state_out.rot = rot_init;
-                        state_in.rot.normalize();
-                        state_out.rot.normalize();
+                        state_in.gravity = p_imu->gravity_;
+                        state_out.gravity = p_imu->gravity_;
+                        state_in.rot = rot_init;
+                        state_out.rot = rot_init;
+                        // state_in.rot.normalize();
+                        // state_out.rot.normalize();
                         state_out.acc = -rot_init.transpose() * state_out.gravity;
                     }
                     kf_input.change_x(state_in);
                     kf_output.change_x(state_out);
+                    p_imu->gravity_align_ = true;
                 }
             } else {
                 if (!p_imu->gravity_align_) {
                     state_in.gravity << VEC_FROM_ARRAY(gravity_init);
-                    state_out.gravity << VEC_FROM_ARRAY(gravity_init);
-                    state_out.acc << VEC_FROM_ARRAY(gravity_init);
-                    state_out.acc *= -1;
+                    if (gravity_align)
+                    {
+                        Eigen::Matrix3d rot_init;
+                        p_imu->gravity_ << VEC_FROM_ARRAY(gravity);
+                        p_imu->Set_init(state_in.gravity, rot_init);
+                        state_out.gravity = p_imu->gravity_;
+                        state_out.rot = rot_init;
+                        // state_in.rot.normalize();
+                        // state_out.rot.normalize();
+                        state_out.acc = -rot_init.transpose() * state_out.gravity;
+                    }
+                    else
+                    {
+                        state_out.gravity << VEC_FROM_ARRAY(gravity_init);
+                        state_out.acc << VEC_FROM_ARRAY(gravity_init);
+                        state_out.acc *= -1;
+                    }
+                    // kf_input.change_x(state_in);
+                    kf_output.change_x(state_out);
+                    p_imu->gravity_align_ = true;
                 }
             }
             /*** Segment the map in lidar FOV ***/
@@ -860,14 +891,18 @@ int main(int argc, char **argv) {
 
             for (size_t i = 0; i < feats_down_body->size(); i++) {
                 V3D point_this(feats_down_body->points[i].x,
-                               feats_down_body->points[i].y,
-                               feats_down_body->points[i].z);
-                pbody_list[i] = point_this;
-                if (extrinsic_est_en) {
-                    if (!use_imu_as_input) {
-                        point_this = kf_output.x_.offset_R_L_I.normalized() * point_this + kf_output.x_.offset_T_L_I;
-                    } else {
-                        point_this = kf_input.x_.offset_R_L_I.normalized() * point_this + kf_input.x_.offset_T_L_I;
+                            feats_down_body->points[i].y,
+                            feats_down_body->points[i].z);
+                pbody_list[i]=point_this;
+                if (extrinsic_est_en)
+                {
+                    if (!use_imu_as_input)
+                    {
+                        point_this = kf_output.x_.offset_R_L_I * point_this + kf_output.x_.offset_T_L_I;
+                    }
+                    else
+                    {
+                        point_this = kf_input.x_.offset_R_L_I * point_this + kf_input.x_.offset_T_L_I;
                     }
                 } else {
                     point_this = Lidar_R_wrt_IMU * point_this + Lidar_T_wrt_IMU;
@@ -876,9 +911,10 @@ int main(int argc, char **argv) {
                 point_crossmat << SKEW_SYM_MATRX(point_this);
                 crossmat_list[i] = point_crossmat;
             }
-
-            if (!use_imu_as_input) {
-                bool imu_upda_cov = false;
+            
+            if (!use_imu_as_input)
+            {     
+                // bool imu_upda_cov = false;
                 effct_feat_num = 0;
                 /**** point by point update ****/
 
@@ -904,27 +940,27 @@ int main(int argc, char **argv) {
                                     << imu_last.linear_acceleration.x, imu_last.linear_acceleration.y, imu_last.linear_acceleration.z;
                         }
                         is_first_frame = false;
-                        imu_upda_cov = true;
+                        // imu_upda_cov = true;
                         time_update_last = time_current;
                         time_predict_last_const = time_current;
                     }
-                    if (imu_en) {
-                        bool imu_comes = time_current > get_time_sec(imu_next.header.stamp);
-                        while (imu_comes) {
-                            imu_upda_cov = true;
-                            angvel_avr
-                                    << imu_next.angular_velocity.x, imu_next.angular_velocity.y, imu_next.angular_velocity.z;
-                            acc_avr
-                                    << imu_next.linear_acceleration.x, imu_next.linear_acceleration.y, imu_next.linear_acceleration.z;
+                    if(imu_en)
+                    {
+                        bool imu_comes = time_current > imu_next.header.stamp.toSec();
+                        while (imu_comes) 
+                        {
+                            // imu_upda_cov = true;
+                            angvel_avr<<imu_next.angular_velocity.x, imu_next.angular_velocity.y, imu_next.angular_velocity.z;
+                            acc_avr   <<imu_next.linear_acceleration.x, imu_next.linear_acceleration.y, imu_next.linear_acceleration.z;
 
                             /*** covariance update ***/
                             imu_last = imu_next;
                             imu_next = *(imu_deque.front());
                             imu_deque.pop_front();
-                            double dt = get_time_sec(imu_last.header.stamp) - time_predict_last_const;
-                            kf_output.predict(dt, Q_output, input_in, true, false);
-                            time_predict_last_const = get_time_sec(imu_last.header.stamp); // big problem
-                            imu_comes = time_current > get_time_sec(imu_next.header.stamp);
+                            double dt = imu_last.header.stamp.toSec() - time_predict_last_const;
+                                kf_output.predict(dt, Q_output, input_in, true, false);
+                            time_predict_last_const = imu_last.header.stamp.toSec(); // big problem
+                            imu_comes = time_current > imu_next.header.stamp.toSec();
                             // if (!imu_comes)
                             {
                                 double dt_cov = get_time_sec(imu_last.header.stamp) - time_update_last;
@@ -953,7 +989,7 @@ int main(int argc, char **argv) {
                             time_update_last = time_current;
                         }
                     }
-                    kf_output.predict(dt, Q_output, input_in, true, false);
+                        kf_output.predict(dt, Q_output, input_in, true, false);
                     propag_time += omp_get_wtime() - propag_state_start;
                     time_predict_last_const = time_current;
                     // if(k == 0)
@@ -974,17 +1010,18 @@ int main(int argc, char **argv) {
                         continue;
                     }
 
-                    if (prop_at_freq_of_imu) {
-                        double dt_cov = time_current - time_update_last;
-                        if (!imu_en && (dt_cov >= imu_time_inte)) // (point_cov_not_prop && imu_prop_cov)
-                        {
-                            double propag_cov_start = omp_get_wtime();
-                            kf_output.predict(dt_cov, Q_output, input_in, false, true);
-                            imu_upda_cov = false;
-                            time_update_last = time_current;
-                            propag_time += omp_get_wtime() - propag_cov_start;
-                        }
-                    }
+                    // if(prop_at_freq_of_imu)
+                    // {
+                        // double dt_cov = time_current - time_update_last;
+                        // if ((dt_cov >= imu_time_inte)) // (point_cov_not_prop && imu_prop_cov)
+                        // {
+                        //     double propag_cov_start = omp_get_wtime();
+                        //     kf_output.predict(dt_cov, Q_output, input_in, false, true);
+                        //     // imu_upda_cov = false;
+                        //     time_update_last = time_current;
+                        //     propag_time += omp_get_wtime() - propag_cov_start;
+                        // }
+                    // }
 
                     solve_start = omp_get_wtime();
 
@@ -1087,8 +1124,8 @@ int main(int argc, char **argv) {
                             kf_input.predict(dt_cov, Q_input, input_in, false, true);
                             time_update_last = get_time_sec(imu_last.header.stamp); //time_current;
                         }
-                        kf_input.predict(dt, Q_input, input_in, true, false);
-                        t_last = get_time_sec(imu_last.header.stamp);
+                            kf_input.predict(dt, Q_input, input_in, true, false); 
+                        t_last = imu_last.header.stamp.toSec();
                         imu_prop_cov = true;
                         // imu_upda_cov = true;
                     }
@@ -1104,7 +1141,7 @@ int main(int argc, char **argv) {
                             time_update_last = time_current;
                         }
                     }
-                    kf_input.predict(dt, Q_input, input_in, true, false);
+                        kf_input.predict(dt, Q_input, input_in, true, false); 
 
                     propag_time += omp_get_wtime() - propag_start;
 
